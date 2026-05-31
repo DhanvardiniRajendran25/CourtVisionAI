@@ -4,6 +4,10 @@ A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natu
 
 > Built at the Frontiers Gen-AI Hackathon @ The Engine, Cambridge — in partnership with Google DeepMind. Deployed on Google Cloud Run within a $25 credit budget.
 
+
+<img width="718" height="858" alt="image" src="https://github.com/user-attachments/assets/0d076114-5b88-4779-bf06-ae134f0a522b" />
+
+
 ---
 
 ## Table of Contents
