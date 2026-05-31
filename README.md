@@ -1,6 +1,6 @@
-# 🏀 CourtVision AI — Scout Agent Backend
+# 🏀 CourtVision AI
 
-A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natural language basketball scouting and real-time simulation intelligence system built on **Gemini 2.5 Flash + Google Search Grounding + Chirp Speech-to-Text**.
+A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natural language basketball scouting and real-time simulation intelligence multi-agent system built on **Gemini 2.5 Flash + Google Search Grounding + Chirp Speech-to-Text**.
 
 > Built at the Frontiers Gen-AI Hackathon @ The Engine, Cambridge — in partnership with Google DeepMind. Deployed on Google Cloud Run within a $25 credit budget.
 
