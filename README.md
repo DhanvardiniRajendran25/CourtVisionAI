@@ -1,6 +1,6 @@
 # 🏀 CourtVision AI — Scout Agent Backend
 
-A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natural language basketball scouting intelligence system grounded in real current-season statistics via **Gemini 2.5 Flash + Google Search Grounding**.
+A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natural language basketball scouting and real-time simulation intelligence system built on **Gemini 2.5 Flash + Google Search Grounding + Chirp Speech-to-Text**.
 
 > Built at the Frontiers Gen-AI Hackathon @ The Engine, Cambridge — in partnership with Google DeepMind. Deployed on Google Cloud Run within a $25 credit budget.
 
@@ -9,13 +9,17 @@ A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natu
 ## Table of Contents
 
 - [Overview](#overview)
+- [Tool Stack](#tool-stack)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
+- [Voice Pipeline — Chirp STT](#voice-pipeline--chirp-stt)
 - [API Reference](#api-reference)
-- [Intelligence Design](#intelligence-design)
+- [Intelligence Design — Gemini 2.5 Flash](#intelligence-design--gemini-25-flash)
+- [Real-Time Court Simulation](#real-time-court-simulation)
 - [Session Management](#session-management)
 - [Grounding & Confidence](#grounding--confidence)
 - [System Prompt](#system-prompt)
+- [Prompt Design — Google AI Studio](#prompt-design--google-ai-studio)
 - [Deployment](#deployment)
 - [Project Structure](#project-structure)
 - [Error Handling](#error-handling)
@@ -25,52 +29,81 @@ A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natu
 
 ## Overview
 
-The Scout Agent backend does four things:
+The Scout Agent backend does five things:
 
-1. **Accepts natural language scouting questions** from coaches via REST API
+1. **Accepts voice or text input** from coaches — Chirp transcribes spoken questions into text in real time so coaches can talk to the AI pilot naturally
 2. **Grounds every response** in real current-season statistics using Gemini's Google Search tool — no hallucinated stats
-3. **Maintains multi-turn conversation memory** per session so coaches can ask follow-up questions naturally
-4. **Compiles scouting intel** into a structured brief that the Simulator agent can ingest
+3. **Maintains multi-turn conversation memory** per session so coaches can ask follow-up questions without re-stating context
+4. **Drives real-time court simulation** — Gemini Flash reasons about player instructions, decides state updates, generates pilot dialogue, and progresses the game narrative live
+5. **Compiles scouting intel** into a structured brief that the Simulator agent can ingest
 
 This service also acts as the **shared backend foundation** for the full CourtVision AI system — it sets up the FastAPI project structure, CORS configuration, and stub endpoints that Video Analyzer and Simulator agents plug into.
+
+---
+
+## Tool Stack
+
+| Tool | Role | What It Does |
+|---|---|---|
+| **Gemini 2.5 Flash** | Core AI brain | Pilot dialogue generation, story progression, player instruction reasoning, state update decisions, grounded scouting responses |
+| **Chirp (Google STT)** | Speech-to-text | Player voice → text transcript. Enables voice-driven interaction with the AI pilot instead of typing |
+| **Google AI Studio** | Prompt design & testing | Experiment with Gemini Flash, tune pilot personality, test responses before production integration |
+| **Google Cloud Run** | Deployment | Serverless, containerized, auto-scales to zero, within $25 credit budget |
 
 ---
 
 ## Architecture
 
 ```
-Coach (React Frontend)
-        │
-        ▼
-    FastAPI Server
-        │
-    ┌───┴────────────────────┐
-    │   Session Store        │
-    │   (in-memory dict)     │
-    └───┬────────────────────┘
-        │
-    ┌───▼────────────────────────────────────────┐
-    │           Intelligence Layer               │
-    │                                            │
-    │  • Gemini 2.5 Flash                        │
-    │  • Google Search Grounding tool            │
-    │  • Coach context injection                 │
-    │  • Follow-up extraction (regex parser)     │
-    │  • Confidence scoring (grounding heuristic)│
-    └───────────────────────────────────────────-┘
-        │
-        ▼
-  Structured Response
-  (answer + confidence + sources + search_queries + suggested_followups)
-        │
-        ▼
-  /api/scout/send-to-sim
-  → Intel summary → Simulator Agent
+Player Voice
+    │
+    ▼
+Chirp (Google STT)                    Coach Typed Input
+    │                                         │
+    └──────────────┬──────────────────────────┘
+                   │
+                   ▼
+            FastAPI Server
+                   │
+        ┌──────────┴───────────┐
+        │    Session Store     │
+        │   (in-memory dict)   │
+        └──────────┬───────────┘
+                   │
+        ┌──────────▼──────────────────────────────────┐
+        │           Intelligence Layer                │
+        │                                             │
+        │  • Gemini 2.5 Flash  ←── Google AI Studio  │
+        │  • Google Search Grounding tool             │
+        │  • Coach context injection                  │
+        │  • Follow-up extraction (regex parser)      │
+        │  • Confidence scoring (grounding heuristic) │
+        └──────────┬──────────────────────────────────┘
+                   │
+        ┌──────────▼──────────────────────────────────┐
+        │       Real-Time Court Simulation            │
+        │                                             │
+        │  • Gemini Flash drives live state updates   │
+        │  • Player instruction → AI reasoning        │
+        │  • Pilot dialogue generation                │
+        │  • Story progression & game narrative       │
+        └──────────┬──────────────────────────────────┘
+                   │
+                   ▼
+         Structured JSON Response
+   (answer + confidence + sources + search_queries
+    + suggested_followups + court_state + pilot_dialogue)
+                   │
+                   ▼
+      /api/scout/send-to-sim
+      → Intel summary → Simulator Agent
 ```
 
 **Architectural principles:**
+- **Voice-first input** — Chirp STT enables natural spoken interaction; typed input is the fallback path
 - **Stateless per request, stateful per session** — all session state lives in-memory; each API call is independently completable
 - **Grounding before generation** — the Google Search tool fires *before* Gemini writes a word, ensuring stats are real
+- **AI as simulation engine** — Gemini Flash is not just a Q&A layer; it drives live court state decisions and pilot dialogue
 - **Separation of concerns** — scouting, video analysis, and simulation are independent service modules sharing a single FastAPI app
 - **Hackathon-pragmatic** — in-memory session store, no database dependency, serverless deployment
 
@@ -81,13 +114,45 @@ Coach (React Frontend)
 | Layer | Choice | Rationale |
 |---|---|---|
 | Framework | FastAPI (Python) | Auto-generates Swagger docs, async support, fast to build |
-| AI Model | Gemini 2.5 Flash | Low-latency inference, native Google Search grounding |
+| AI Model | Gemini 2.5 Flash | Low-latency inference, native Google Search grounding, strong reasoning for simulation |
 | AI SDK | `google-genai` v1.14.0+ | Official unified SDK — replaces deprecated `google-generativeai` |
+| Speech-to-Text | Chirp (Google STT) | Real-time voice transcription for voice-driven gameplay |
 | Search Grounding | Google Search tool | Real-time current-season basketball statistics |
+| Prompt Design | Google AI Studio | Pilot personality tuning, response testing before production |
 | Session Store | In-memory Python dict | Zero-dependency, sufficient for hackathon scale |
 | Deployment | Google Cloud Run | Serverless, containerized, within $25 budget |
 
 > **Important:** Use `google-genai`, not `google-generativeai`. The latter is deprecated and will break grounding tool calls.
+
+---
+
+## Voice Pipeline — Chirp STT
+
+Chirp handles the speech-to-text layer, enabling players and coaches to speak directly to the AI pilot instead of typing.
+
+### Flow
+
+```
+Player speaks
+    │
+    ▼
+Audio stream captured (frontend microphone)
+    │
+    ▼
+Chirp (Google Speech-to-Text)
+    │
+    ▼
+Text transcript
+    │
+    ▼
+Gemini Flash (same pipeline as typed input)
+```
+
+### Why Chirp
+
+- Real-time transcription keeps latency low during active gameplay
+- Enables natural coaching language — coaches talk the way they actually coach
+- Transcript feeds directly into the same Gemini pipeline as typed questions — no separate handling required
 
 ---
 
@@ -106,7 +171,7 @@ Health check for deployment verification and uptime monitoring.
 
 ### `POST /api/scout/ask`
 
-Core scouting endpoint. Accepts a natural language coaching question and returns a grounded tactical response.
+Core scouting endpoint. Accepts a natural language coaching question (via typed input or Chirp transcript) and returns a grounded tactical response.
 
 **Request:**
 ```json
@@ -123,9 +188,9 @@ Core scouting endpoint. Accepts a natural language coaching question and returns
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `question` | string | ✅ | Natural language scouting question |
+| `question` | string | ✅ | Natural language scouting question — typed or Chirp transcript |
 | `session_id` | string | ❌ | Groups messages into a conversation thread. Defaults to `"default"` |
-| `coach_context` | object | ❌ | Coach's team info. When provided, AI personalizes strategy recommendations and **never** suggests plays relying on injured players |
+| `coach_context` | object | ❌ | Coach's team info. AI personalizes strategy and **never** suggests plays relying on injured players |
 
 **Response:**
 ```json
@@ -149,10 +214,10 @@ Core scouting endpoint. Accepts a natural language coaching question and returns
 | Field | Description |
 |---|---|
 | `answer` | Tactical response with real player names, specific statistics, and actionable coaching suggestions |
-| `confidence` | Float 0–1. Derived from grounding quality, not model self-assessment (see [Confidence Scoring](#grounding--confidence)) |
+| `confidence` | Float 0–1. Derived from grounding quality, not model self-assessment |
 | `sources` | Extracted from `grounding_metadata.grounding_chunks` — actual web sources Gemini searched |
 | `search_queries` | Exact queries Gemini fired against Google Search. Surfaced in UI for transparency |
-| `suggested_followups` | Three follow-up questions generated by the model and parsed from a structured `FOLLOWUPS:` token |
+| `suggested_followups` | Three follow-up questions parsed from a structured `FOLLOWUPS:` token |
 
 ---
 
@@ -182,7 +247,7 @@ Compiles all scouting intel from a session into a structured brief for the Simul
 
 ### Stub Endpoints
 
-These return `{"status": "not_implemented"}` so the frontend can wire up all pages immediately without waiting for backend completion:
+These return `{"status": "not_implemented"}` so the frontend can wire up all pages immediately:
 
 ```
 POST /api/video/analyze
@@ -194,9 +259,16 @@ POST /api/simulator/continue
 
 ---
 
-## Intelligence Design
+## Intelligence Design — Gemini 2.5 Flash
 
-### Gemini SDK — correct initialization
+Gemini 2.5 Flash is the core AI brain of the system. It handles four distinct responsibilities:
+
+1. **Pilot dialogue generation** — produces spoken responses from the AI pilot to the player
+2. **Story progression** — decides how the game narrative advances based on player actions
+3. **Player instruction reasoning** — interprets what the player is trying to do and determines the outcome
+4. **Grounded scouting responses** — answers tactical questions anchored to real current-season statistics
+
+### SDK initialization
 
 ```python
 from google import genai
@@ -244,6 +316,52 @@ if grounding_meta and grounding_meta.web_search_queries:
 
 ---
 
+## Real-Time Court Simulation
+
+Gemini Flash drives live basketball court simulation. Player instructions are interpreted by the AI, translated into court state updates, and rendered in real time on the frontend.
+
+### Simulation flow
+
+```
+Player instruction (voice via Chirp or typed)
+    │
+    ▼
+Gemini Flash — reasoning about instruction
+    │
+    ▼
+State update decision (positions, score, clock, narrative)
+    │
+    ▼
+Court render update (frontend)
+    │
+    ▼
+Pilot dialogue response → player
+```
+
+### What Gemini reasons about in simulation
+
+- **Player actions** — what the player is attempting and whether it succeeds
+- **Opponent behavior** — how the opposing team responds based on scouting intel
+- **Game narrative** — how the story of the game progresses across turns
+- **Pilot dialogue** — what the AI coach/pilot says back to the player in response
+
+### Game state structure
+
+```python
+game_state = {
+    "court": { ... },           # player and opponent positions
+    "score": {"home": 0, "away": 0},
+    "clock": "12:00",
+    "quarter": 1,
+    "narrative": [...],         # list of game events so far
+    "pilot_context": { ... }    # AI pilot's awareness of the situation
+}
+```
+
+The full game state is injected into each Gemini call so the AI maintains coherent awareness across turns — the pilot remembers what happened two possessions ago.
+
+---
+
 ## Session Management
 
 Sessions are maintained as an in-memory dict keyed by `session_id`. Each session stores a conversation history of role/content pairs enabling genuine multi-turn context.
@@ -276,8 +394,6 @@ contents.append(
 )
 ```
 
-This means Gemini receives the **full conversation context** on every call — coaches can ask follow-up questions like "How about their free throw shooting?" without re-stating which team they're asking about.
-
 ---
 
 ## Grounding & Confidence
@@ -288,7 +404,7 @@ Basketball scouting requires exact numbers — "they struggle defensively" is us
 
 ### Confidence scoring heuristic
 
-Confidence is **derived from grounding quality**, not asked of the model. This is intentional — model self-assessed confidence is unreliable and often overconfident:
+Confidence is **derived from grounding quality**, not asked of the model. Model self-assessed confidence is unreliable and often overconfident:
 
 ```python
 def calculate_confidence(grounding_metadata) -> float:
@@ -302,8 +418,6 @@ def calculate_confidence(grounding_metadata) -> float:
 ```
 
 ### Follow-up extraction
-
-The system prompt instructs the model to end every response with a structured `FOLLOWUPS:` token. The parser extracts it without relying on the model to format it correctly every time:
 
 ```python
 import json, re
@@ -335,12 +449,14 @@ def extract_followups(answer_text: str) -> tuple[str, list[str]]:
 ## System Prompt
 
 ```
-You are CourtVision AI Scout, an elite basketball scouting assistant.
+You are CourtVision AI Scout, an elite basketball scouting assistant and AI pilot.
 
 You help coaches prepare for upcoming opponents by providing tactical intelligence
-grounded in REAL, CURRENT-SEASON statistics.
+grounded in REAL, CURRENT-SEASON statistics. During simulation, you drive live
+gameplay as the pilot — generating dialogue, reasoning about player actions, and
+progressing the game narrative.
 
-RESPONSE FORMAT — You MUST structure every response as follows:
+RESPONSE FORMAT — You MUST structure every scouting response as follows:
 
 1. DIRECT ANSWER: Lead with the tactical answer. Be specific. Use real numbers.
    Name players. Cite stats.
@@ -352,6 +468,9 @@ RESPONSE FORMAT — You MUST structure every response as follows:
    NEVER suggest strategies relying on players listed as injured.
 
 4. CONFIDENCE NOTE: Rate your confidence (High/Medium/Low) based on data availability.
+   High = multiple current sources with specific stats.
+   Medium = some data but incomplete picture.
+   Low = limited data, more speculative.
 
 5. SUGGESTED FOLLOW-UPS: End with exactly 3 follow-up questions.
    Format: FOLLOWUPS: ["question 1", "question 2", "question 3"]
@@ -362,6 +481,39 @@ RULES:
   turnover margin at -2.3/game"
 - Frame everything from a coaching perspective
 - Be concise. Coaches are busy.
+- During simulation: stay in character as the pilot, reason about player actions
+  explicitly, and update game state in every response
+```
+
+---
+
+## Prompt Design — Google AI Studio
+
+All Gemini Flash prompts — scouting system prompt, pilot personality, simulation reasoning instructions — were **designed and iterated in Google AI Studio** before production integration.
+
+### What Google AI Studio was used for
+
+- **Pilot personality tuning** — shaping how the AI pilot speaks, its coaching tone, and how it handles uncertainty
+- **Simulation prompt testing** — validating that Gemini correctly interprets player instructions and produces coherent state updates
+- **Scouting response testing** — verifying response format, stat citation quality, and follow-up question relevance across edge cases
+- **Temperature calibration** — determining that `temperature=0.2` produces the right balance of factual precision and natural language
+
+### Workflow
+
+```
+Prompt draft in Google AI Studio
+    │
+    ▼
+Test against sample basketball scenarios
+    │
+    ▼
+Iterate on pilot personality and format constraints
+    │
+    ▼
+Finalize SCOUT_SYSTEM_PROMPT constant
+    │
+    ▼
+Integrate into production FastAPI service
 ```
 
 ---
@@ -399,20 +551,23 @@ gcloud run deploy courtvision-api \
 
 ```
 courtvision-backend/
-├── main.py                  # FastAPI app, CORS, endpoint registration
+├── main.py                    # FastAPI app, CORS, endpoint registration
 ├── routes/
-│   ├── scout.py             # /api/scout/ask, /api/scout/send-to-sim
-│   ├── video.py             # /api/video/* (stubs)
-│   └── simulator.py         # /api/simulator/* (stubs)
+│   ├── scout.py               # /api/scout/ask, /api/scout/send-to-sim
+│   ├── video.py               # /api/video/* (stubs)
+│   └── simulator.py           # /api/simulator/* (stubs + simulation logic)
 ├── services/
-│   ├── gemini_client.py     # google-genai client initialization
-│   ├── grounding.py         # source extraction, confidence scoring
-│   ├── followup_parser.py   # FOLLOWUPS: token regex extraction
-│   └── intel_store.py       # shared in-memory store for send-to-sim
+│   ├── gemini_client.py       # google-genai client initialization
+│   ├── chirp_client.py        # Google STT / Chirp integration
+│   ├── grounding.py           # source extraction, confidence scoring
+│   ├── followup_parser.py     # FOLLOWUPS: token regex extraction
+│   ├── intel_store.py         # shared in-memory store for send-to-sim
+│   └── simulation.py          # court state management, game loop
 ├── session/
-│   └── store.py             # in-memory session dict + history builder
+│   └── store.py               # in-memory session dict + history builder
 ├── prompts/
-│   └── scout_system.py      # SCOUT_SYSTEM_PROMPT constant
+│   ├── scout_system.py        # SCOUT_SYSTEM_PROMPT constant
+│   └── pilot_system.py        # AI pilot personality prompt
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
@@ -425,6 +580,7 @@ courtvision-backend/
 | Condition | HTTP Code | Response |
 |---|---|---|
 | Gemini API timeout | 200 (graceful) | `{"answer": "Scouting request timed out. Please try again.", "confidence": 0, ...}` |
+| Chirp STT failure | 200 (graceful) | Falls back to typed input prompt |
 | Empty or invalid question | 400 | `{"detail": "Question is required"}` |
 | Gemini rate limit | 429 | `{"detail": "Rate limit hit. Retry after X seconds"}` |
 | Unhandled exception | 500 | Generic message logged to Cloud Run, not exposed to client |
@@ -441,6 +597,7 @@ courtvision-backend/
 | CORS | Open (`allow_origins=["*"]`) — no issues from any frontend origin |
 | Swagger docs | `/docs` — full interactive API explorer |
 | Session IDs | Client-generated. Recommended: `scout_${Date.now()}` |
+| Voice input | Chirp transcript passed as `question` field — same endpoint, no special handling |
 | `coach_context` | Optional — system works without it, better with it |
 
 ---
