@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+openai
+google-genai
+python-dotenv
+python-multipart
+yt-dlp

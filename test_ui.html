@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtVision AI — Dev Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; overflow: hidden; }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 0 24px; display: flex; align-items: center; gap: 12px; height: 52px; }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: #fff; white-space: nowrap; }
+    .tab-bar { display: flex; gap: 2px; margin-left: 16px; }
+    .tab-btn { background: none; border: none; color: #64748b; font-size: 0.82rem; font-weight: 600; padding: 6px 14px; border-radius: 6px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .tab-btn:hover { color: #e2e8f0; background: #2d3148; }
+    .tab-btn.active { background: #3b4fd8; color: #fff; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block; }
+    .status-dot.ok { background: #22c55e; }
+    #status-text { font-size: 0.75rem; color: #94a3b8; }
+    .ping-btn { background: #2d3148; border: 1px solid #3b4fd8; color: #94a3b8; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.72rem; }
+    .ping-btn:hover { color: #e2e8f0; }
+
+    /* ── Shared layout ──────────────────────────────────────── */
+    .tab-content { display: none; height: calc(100vh - 52px); }
+    .tab-content.active { display: grid; }
+
+    /* ── Shared panel styles ─────────────────────────────────── */
+    .panel { background: #1a1d27; border-right: 1px solid #2d3148; padding: 18px; overflow-y: auto; }
+    .panel h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 10px; }
+    label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; margin-top: 10px; }
+    input, textarea, select {
+      width: 100%; background: #0f1117; border: 1px solid #2d3148; border-radius: 6px;
+      color: #e2e8f0; padding: 7px 10px; font-size: 0.82rem; font-family: inherit; outline: none;
+    }
+    input:focus, textarea:focus, select:focus { border-color: #3b4fd8; }
+    textarea { resize: vertical; min-height: 60px; }
+    .row2 { display: flex; gap: 8px; }
+    .row2 input, .row2 button { flex: 1; }
+    .btn { width: 100%; margin-top: 12px; padding: 9px; background: #3b4fd8; color: #fff; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: #4a5ee8; }
+    .btn:disabled { background: #2d3148; color: #4a5568; cursor: not-allowed; }
+    .btn-teal { background: #0d9488; }
+    .btn-teal:hover { background: #0f766e; }
+    .btn-sm { background: #2d3148; border: 1px solid #3b4fd8; color: #94a3b8; border-radius: 6px; padding: 7px 10px; cursor: pointer; font-size: 0.75rem; white-space: nowrap; }
+    .btn-sm:hover { color: #e2e8f0; }
+    hr.div { border: none; border-top: 1px solid #2d3148; margin: 14px 0; }
+    .base-url-input { background: #0f1117; border: 1px solid #2d3148; border-radius: 6px; color: #94a3b8; padding: 6px 10px; font-size: 0.78rem; width: 100%; outline: none; }
+
+    /* ══════════════════════════════════════════════════════════
+       SCOUT TAB
+    ══════════════════════════════════════════════════════════ */
+    #tab-scout { grid-template-columns: 320px 1fr; }
+    .chat-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .msg { max-width: 85%; }
+    .msg.user { align-self: flex-end; }
+    .msg.assistant { align-self: flex-start; }
+    .msg-bubble { padding: 11px 14px; border-radius: 12px; font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+    .msg.user .msg-bubble { background: #3b4fd8; color: #fff; border-bottom-right-radius: 2px; }
+    .msg.assistant .msg-bubble { background: #1a1d27; border: 1px solid #2d3148; border-bottom-left-radius: 2px; }
+    .msg-meta { font-size: 0.7rem; color: #4a5568; margin-top: 3px; }
+    .msg.user .msg-meta { text-align: right; }
+    .confidence { display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+    .conf-high { background: #14532d; color: #4ade80; }
+    .conf-med  { background: #713f12; color: #fbbf24; }
+    .conf-low  { background: #450a0a; color: #f87171; }
+    .sources { margin-top: 7px; }
+    .sources-title { font-size: 0.7rem; color: #4a5568; margin-bottom: 3px; }
+    .source-link { display: block; font-size: 0.7rem; color: #60a5fa; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .source-link:hover { text-decoration: underline; }
+    .followups { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 5px; }
+    .followup-btn { font-size: 0.7rem; padding: 3px 9px; background: #0f1117; border: 1px solid #2d3148; color: #94a3b8; border-radius: 4px; cursor: pointer; }
+    .followup-btn:hover { border-color: #3b4fd8; color: #e2e8f0; }
+    .search-chip { font-size: 0.66rem; background: #1e293b; border: 1px solid #334155; color: #64748b; padding: 2px 7px; border-radius: 10px; display: inline-block; margin: 2px 2px 0 0; }
+    .chat-input-row { border-top: 1px solid #2d3148; padding: 14px 18px; display: flex; gap: 10px; }
+    .chat-input-row textarea { flex: 1; min-height: 40px; max-height: 100px; resize: none; padding: 9px 11px; }
+    .send-btn { background: #3b4fd8; border: none; color: #fff; border-radius: 6px; padding: 9px 16px; cursor: pointer; font-weight: 600; align-self: flex-end; font-size: 0.85rem; }
+    .send-btn:hover { background: #4a5ee8; }
+    .send-btn:disabled { background: #2d3148; color: #4a5568; cursor: not-allowed; }
+    .loading-msg { color: #4a5568; font-style: italic; font-size: 0.83rem; }
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #2d3148; gap: 8px; }
+    .empty-state svg { width: 44px; height: 44px; }
+    .empty-state p { font-size: 0.82rem; }
+
+    /* ══════════════════════════════════════════════════════════
+       SIMULATOR TAB
+    ══════════════════════════════════════════════════════════ */
+    #tab-sim { grid-template-columns: 300px 1fr; }
+
+    /* Scenario toggle buttons */
+    .scenario-row { display: flex; gap: 6px; margin-top: 8px; }
+    .scenario-btn { flex: 1; padding: 6px 0; background: #0f1117; border: 1px solid #2d3148; color: #64748b; border-radius: 6px; cursor: pointer; font-size: 0.72rem; font-weight: 600; }
+    .scenario-btn.active { background: #1e2a5e; border-color: #3b4fd8; color: #93c5fd; }
+    .scenario-btn:hover { border-color: #3b4fd8; color: #e2e8f0; }
+
+    /* Coach action buttons */
+    .coach-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 8px; }
+    .coach-btn { padding: 7px 4px; background: #0f1117; border: 1px solid #2d3148; color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 0.7rem; text-align: center; }
+    .coach-btn:hover:not(:disabled) { border-color: #f97316; color: #fdba74; }
+    .coach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .continue-btn { width: 100%; margin-top: 8px; padding: 9px; background: #1e3a2f; border: 1px solid #22c55e; color: #4ade80; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600; }
+    .continue-btn:hover:not(:disabled) { background: #14532d; }
+    .continue-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Right sim panel */
+    .sim-right { display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Scoreboard */
+    .scoreboard { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .team-score { display: flex; align-items: center; gap: 10px; }
+    .team-name { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; }
+    .score-num { font-size: 2rem; font-weight: 800; color: #fff; line-height: 1; }
+    .score-sep { font-size: 1.2rem; color: #4a5568; }
+    .game-meta { text-align: center; }
+    .quarter-display { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+    .time-display { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin-top: 2px; }
+    .possession-dot { width: 7px; height: 7px; border-radius: 50%; background: #f97316; display: inline-block; margin-left: 6px; vertical-align: middle; }
+
+    /* Court */
+    .court-wrap { flex-shrink: 0; padding: 12px 20px 0; display: flex; justify-content: center; }
+    #court-svg { width: 100%; max-width: 500px; height: auto; display: block; }
+    #sim-ball { transition: cx 0.55s ease-in-out, cy 0.55s ease-in-out; }
+
+    /* Play feed */
+    .play-feed { flex: 1; overflow-y: auto; padding: 10px 20px 16px; display: flex; flex-direction: column; gap: 4px; }
+    .play-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; background: #1a1d27; border: 1px solid #1e2130; font-size: 0.78rem; }
+    .play-row:last-child { border-color: #2d3148; }
+    .play-time { color: #4a5568; white-space: nowrap; font-size: 0.7rem; padding-top: 1px; min-width: 36px; }
+    .play-badge { font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+    .badge-a { background: #431407; color: #fb923c; }
+    .badge-b { background: #1e3a5f; color: #60a5fa; }
+    .play-action { color: #cbd5e1; line-height: 1.4; }
+    .play-score { margin-left: auto; font-size: 0.7rem; color: #64748b; white-space: nowrap; padding-top: 1px; padding-left: 8px; }
+    .coach-row { background: #1c1a0e; border-color: #92400e; }
+    .coach-row .play-action { color: #fcd34d; font-style: italic; }
+    .play-type-icon { flex-shrink: 0; }
+
+    .sim-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #2d3148; gap: 10px; padding: 40px; text-align: center; }
+    .sim-empty p { font-size: 0.82rem; }
+    .sim-status { font-size: 0.76rem; color: #64748b; padding: 6px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>CourtVision AI</h1>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('scout', this)">Scout Agent</button>
+    <button class="tab-btn" onclick="switchTab('sim', this)">Game Simulator</button>
+  </div>
+  <div class="header-right">
+    <input class="base-url-input" id="base-url" type="text" value="http://localhost:8000" style="width:200px" />
+    <span class="status-dot" id="status-dot"></span>
+    <span id="status-text">checking...</span>
+    <button class="ping-btn" onclick="checkHealth()">ping</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     SCOUT TAB
+══════════════════════════════════════════════════════════ -->
+<div class="tab-content active" id="tab-scout">
+  <div class="panel">
+    <h2>Session</h2>
+    <label>Session ID</label>
+    <div class="row2">
+      <input id="session-id" type="text" value="scout_001" />
+      <button class="btn-sm" onclick="newScoutSession()">New</button>
+    </div>
+
+    <hr class="div" />
+    <h2>Coach Context (optional)</h2>
+    <label>Your Team</label>
+    <input id="coach-team" type="text" placeholder="e.g. Auburn" />
+    <label>Injured Players (comma-separated)</label>
+    <input id="injured" type="text" placeholder="e.g. Johni Broome" />
+    <label>Play Style</label>
+    <input id="style" type="text" placeholder="e.g. uptempo, half-court" />
+
+    <hr class="div" />
+    <h2>Send to Simulator</h2>
+    <label>Opponent Team Name</label>
+    <input id="sim-team" type="text" placeholder="e.g. Duke" />
+    <button class="btn btn-teal" onclick="sendToSim()" style="margin-top:10px">Compile Intel → Simulator</button>
+    <div id="sim-result" style="margin-top:8px;font-size:0.75rem;color:#94a3b8;"></div>
+  </div>
+
+  <div class="chat-panel">
+    <div class="messages" id="messages">
+      <div class="empty-state" id="scout-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <p>Ask a scouting question to get started</p>
+        <p style="font-size:0.73rem">"What's Duke's biggest weakness this season?"</p>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <textarea id="question-input" placeholder="Ask a scouting question..." rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendQuestion()}"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendQuestion()">Ask</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     SIMULATOR TAB
+══════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-sim">
+
+  <!-- Left: setup + controls -->
+  <div class="panel">
+    <h2>Teams</h2>
+    <label>Your Team (A)</label>
+    <input id="sim-team-a" type="text" placeholder="e.g. Auburn" value="Auburn" />
+    <label>Opponent (B)</label>
+    <input id="sim-team-b" type="text" placeholder="e.g. Duke" value="Duke" />
+
+    <label>Scenario</label>
+    <div class="scenario-row">
+      <button class="scenario-btn active" onclick="setScenario(this,'clutch_time')">Clutch</button>
+      <button class="scenario-btn" onclick="setScenario(this,'full_game')">Full</button>
+      <button class="scenario-btn" onclick="setScenario(this,'comeback')">Comeback</button>
+    </div>
+
+    <hr class="div" />
+    <h2>Pre-Game Context</h2>
+    <label>Injured Players (comma-separated)</label>
+    <input id="sim-injured" type="text" placeholder="e.g. Johni Broome" />
+    <label>Play Style</label>
+    <select id="sim-style">
+      <option value="">Default</option>
+      <option value="uptempo">Uptempo</option>
+      <option value="half-court">Half-court</option>
+      <option value="defensive">Defensive</option>
+    </select>
+    <label>Scout Session ID (optional)</label>
+    <input id="sim-scout-session" type="text" placeholder="e.g. scout_001" />
+    <label>Sim Session ID</label>
+    <div class="row2">
+      <input id="sim-session-id" type="text" value="sim_001" />
+      <button class="btn-sm" onclick="newSimSession()">New</button>
+    </div>
+
+    <button class="btn" id="start-sim-btn" onclick="startSim()" style="margin-top:14px">Start Simulation</button>
+
+    <hr class="div" />
+    <h2>Coach Controls</h2>
+    <div class="coach-actions" id="coach-actions">
+      <button class="coach-btn" disabled onclick="simAction('Zone defense')">Zone defense</button>
+      <button class="coach-btn" disabled onclick="simAction('Full court press')">Full court press</button>
+      <button class="coach-btn" disabled onclick="simAction('Call timeout')">Call timeout</button>
+      <button class="coach-btn" disabled onclick="simAction('Feed the post')">Feed the post</button>
+      <button class="coach-btn" disabled onclick="simAction('Slow it down')">Slow it down</button>
+      <button class="coach-btn" disabled onclick="simAction('Sub bench')">Sub bench</button>
+    </div>
+    <button class="continue-btn" id="continue-btn" disabled onclick="simContinue()">Continue ▶</button>
+    <div class="sim-status" id="sim-status"></div>
+  </div>
+
+  <!-- Right: court + scoreboard + feed -->
+  <div class="sim-right">
+
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+      <div class="team-score">
+        <div>
+          <div class="team-name" id="sb-team-a">AUBURN</div>
+          <div class="score-num" id="sb-score-a">—</div>
+        </div>
+      </div>
+      <div class="game-meta">
+        <div class="quarter-display" id="sb-quarter">—</div>
+        <div class="time-display" id="sb-time">—:——</div>
+      </div>
+      <div class="team-score" style="text-align:right">
+        <div>
+          <div class="team-name" id="sb-team-b">DUKE</div>
+          <div class="score-num" id="sb-score-b">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Court SVG -->
+    <div class="court-wrap">
+      <svg id="court-svg" viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg">
+        <!-- Floor -->
+        <rect width="500" height="300" fill="#1a1a2e"/>
+        <rect x="4" y="4" width="492" height="292" rx="4" fill="#1f1510" stroke="#3a2a15" stroke-width="1.5"/>
+        <!-- Lane / paint -->
+        <rect x="175" y="185" width="150" height="111" fill="#1a0f0a" stroke="#3d5c3a" stroke-width="1.5"/>
+        <!-- Free throw lane marks -->
+        <line x1="175" y1="215" x2="185" y2="215" stroke="#3d5c3a" stroke-width="1.5"/>
+        <line x1="315" y1="215" x2="325" y2="215" stroke="#3d5c3a" stroke-width="1.5"/>
+        <line x1="175" y1="240" x2="185" y2="240" stroke="#3d5c3a" stroke-width="1.5"/>
+        <line x1="315" y1="240" x2="325" y2="240" stroke="#3d5c3a" stroke-width="1.5"/>
+        <!-- Free throw line -->
+        <line x1="175" y1="185" x2="325" y2="185" stroke="#ffffff" stroke-width="1" opacity="0.5"/>
+        <!-- Free throw circle (dashed top half) -->
+        <path d="M 175,185 A 75,75 0 0 1 325,185" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="5,4" opacity="0.3"/>
+        <!-- Free throw circle (solid bottom half) -->
+        <path d="M 325,185 A 75,75 0 0 1 175,185" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.3"/>
+        <!-- Restricted area arc -->
+        <path d="M 225,296 A 25,25 0 0 1 275,296" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.3"/>
+        <!-- Backboard -->
+        <line x1="220" y1="291" x2="280" y2="291" stroke="#888" stroke-width="2.5"/>
+        <!-- Basket -->
+        <circle cx="250" cy="285" r="9" fill="none" stroke="#f97316" stroke-width="2"/>
+        <!-- 3-point line: corner portions -->
+        <line x1="50" y1="296" x2="50" y2="192" stroke="#ffffff" stroke-width="1" opacity="0.45"/>
+        <line x1="450" y1="296" x2="450" y2="192" stroke="#ffffff" stroke-width="1" opacity="0.45"/>
+        <!-- 3-point arc -->
+        <path d="M 50,192 A 215,215 0 0 1 450,192" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.45"/>
+        <!-- Half-court line (top edge) -->
+        <line x1="4" y1="4" x2="496" y2="4" stroke="#2d3148" stroke-width="1"/>
+        <!-- Ball -->
+        <circle id="sim-ball" cx="250" cy="150" r="10" fill="#f97316" opacity="0.15"/>
+      </svg>
+    </div>
+
+    <!-- Play-by-play feed -->
+    <div class="play-feed" id="play-feed">
+      <div class="sim-empty" id="sim-empty">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#2d3148">
+          <circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/>
+        </svg>
+        <p>Set up your teams and click Start Simulation</p>
+        <p style="font-size:0.72rem;color:#374151">Scout Agent intel will be loaded automatically if you enter a scout session ID</p>
+      </div>
+    </div>
+
+  </div><!-- /sim-right -->
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  $(`tab-${tab}`).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Health check ──────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    await fetch(`${$('base-url').value}/health`);
+    $('status-dot').className = 'status-dot ok';
+    $('status-text').textContent = 'online';
+  } catch {
+    $('status-dot').className = 'status-dot';
+    $('status-text').textContent = 'offline';
+  }
+}
+checkHealth();
+
+// ══════════════════════════════════════════════════════════════
+// SCOUT
+// ══════════════════════════════════════════════════════════════
+
+function newScoutSession() {
+  $('session-id').value = 'scout_' + Date.now();
+  $('messages').innerHTML = '';
+  $('messages').appendChild(buildEmptyState());
+}
+
+function buildEmptyState() {
+  const d = document.createElement('div');
+  d.className = 'empty-state'; d.id = 'scout-empty';
+  d.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p>New session started</p>`;
+  return d;
+}
+
+function getCoachContext() {
+  const team = $('coach-team').value.trim();
+  const injured = $('injured').value.trim();
+  const style = $('style').value.trim();
+  if (!team && !injured && !style) return null;
+  return {
+    team: team || null,
+    injured_players: injured ? injured.split(',').map(s => s.trim()).filter(Boolean) : [],
+    style: style || null,
+  };
+}
+
+async function sendQuestion() {
+  const q = $('question-input').value.trim();
+  if (!q) return;
+  const empty = $('scout-empty');
+  if (empty) empty.remove();
+  addMsg('user', q);
+  $('question-input').value = '';
+  $('send-btn').disabled = true;
+  const loader = addLoader('Scouting...');
+  try {
+    const r = await fetch(`${$('base-url').value}/api/scout/ask`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ question: q, session_id: $('session-id').value.trim() || 'default', coach_context: getCoachContext() }),
+    });
+    loader.remove();
+    if (!r.ok) { const e = await r.json().catch(()=>({})); addErrMsg(`Error ${r.status}: ${e.detail||r.statusText}`); return; }
+    addScoutResponse(await r.json());
+  } catch(e) {
+    loader.remove();
+    addErrMsg(`Network error: ${e.message}`);
+  } finally {
+    $('send-btn').disabled = false;
+    $('question-input').focus();
+  }
+}
+
+async function sendToSim() {
+  const team = $('sim-team').value.trim();
+  if (!team) { $('sim-result').textContent = 'Enter an opponent team name first.'; return; }
+  $('sim-result').textContent = 'Compiling intel...';
+  try {
+    const r = await fetch(`${$('base-url').value}/api/scout/send-to-sim`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: $('session-id').value.trim(), team }),
+    });
+    const d = await r.json();
+    $('sim-result').innerHTML = `<span style="color:#4ade80">✓ ${d.status}</span><pre style="margin-top:5px;white-space:pre-wrap;font-size:0.68rem;color:#94a3b8">${d.intel_summary}</pre>`;
+    // Pre-fill simulator fields
+    $('sim-team-b').value = team;
+    $('sim-scout-session').value = $('session-id').value.trim();
+  } catch(e) { $('sim-result').textContent = `Error: ${e.message}`; }
+}
+
+function addMsg(role, text) {
+  const msgs = $('messages');
+  const d = document.createElement('div');
+  d.className = `msg ${role}`;
+  d.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div>`;
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+function addLoader(text) {
+  const msgs = $('messages');
+  const d = document.createElement('div');
+  d.className = 'msg assistant';
+  d.innerHTML = `<div class="msg-bubble loading-msg">${text} ⏳</div>`;
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+function addScoutResponse(data) {
+  const msgs = $('messages');
+  const cc = data.confidence >= 0.8 ? 'conf-high' : data.confidence >= 0.65 ? 'conf-med' : 'conf-low';
+  const pct = Math.round(data.confidence * 100);
+  let src = '';
+  if (data.sources && data.sources.length)
+    src = `<div class="sources"><div class="sources-title">Sources (${data.sources.length})</div>${data.sources.map(s=>`<a class="source-link" href="${escHtml(s.uri)}" target="_blank">${escHtml(s.title||s.uri)}</a>`).join('')}</div>`;
+  let qry = '';
+  if (data.search_queries && data.search_queries.length)
+    qry = `<div style="margin-top:7px">${data.search_queries.map(q=>`<span class="search-chip">${escHtml(q)}</span>`).join('')}</div>`;
+  let fup = '';
+  if (data.suggested_followups && data.suggested_followups.length)
+    fup = `<div class="followups">${data.suggested_followups.map(f=>`<button class="followup-btn" onclick="setQuestion(this.dataset.q)" data-q="${escAttr(f)}">${escHtml(f)}</button>`).join('')}</div>`;
+  const d = document.createElement('div');
+  d.className = 'msg assistant';
+  d.innerHTML = `<div class="msg-bubble"><div style="margin-bottom:5px"><span class="confidence ${cc}">${pct}%</span></div>${escHtml(data.answer)}${src}${qry}${fup}</div><div class="msg-meta">Session: ${escHtml(data.session_id)}</div>`;
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+}
+function addErrMsg(text) {
+  const msgs = $('messages');
+  const d = document.createElement('div');
+  d.className = 'msg assistant';
+  d.innerHTML = `<div class="msg-bubble" style="border-color:#ef4444;color:#fca5a5">${escHtml(text)}</div>`;
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+}
+function setQuestion(q) { $('question-input').value = q; $('question-input').focus(); }
+
+// ══════════════════════════════════════════════════════════════
+// SIMULATOR
+// ══════════════════════════════════════════════════════════════
+
+let simScenario = 'clutch_time';
+let simScoreFieldForA = 'score_a'; // detected per-session which field belongs to team_a
+let simLastScoreA = null;
+let simLastScoreB = null;
+
+// Detect which JSON field (score_a or score_b) belongs to team_a by watching
+// which field increases when team_a makes a scoring play.
+function detectScoreMapping(plays, teamA) {
+  const upper = teamA.toUpperCase();
+  for (let i = 1; i < plays.length; i++) {
+    const curr = plays[i], prev = plays[i - 1];
+    if (!['made_shot', 'free_throw_made'].includes(curr.play_type)) continue;
+    const dA = curr.score_a - prev.score_a;
+    const dB = curr.score_b - prev.score_b;
+    if (dA === 0 && dB === 0) continue;
+    if (curr.team.toUpperCase() === upper) {
+      return dA > 0 ? 'score_a' : 'score_b';
+    } else {
+      return dA > 0 ? 'score_b' : 'score_a';
+    }
+  }
+  return null; // couldn't detect yet
+}
+
+function setScenario(btn, val) {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  simScenario = val;
+}
+
+function newSimSession() {
+  $('sim-session-id').value = 'sim_' + Date.now();
+}
+
+function setSimLoading(loading) {
+  $('start-sim-btn').disabled = loading;
+  $('continue-btn').disabled = loading;
+  document.querySelectorAll('.coach-btn').forEach(b => b.disabled = loading);
+  $('sim-status').textContent = loading ? 'Simulating...' : '';
+}
+
+function enableCoachControls() {
+  document.querySelectorAll('.coach-btn').forEach(b => b.disabled = false);
+  $('continue-btn').disabled = false;
+}
+
+function getSimCoachContext() {
+  const injured = $('sim-injured').value.trim();
+  const style = $('sim-style').value.trim();
+  if (!injured && !style) return null;
+  return {
+    injured_players: injured ? injured.split(',').map(s=>s.trim()).filter(Boolean) : [],
+    style: style || null,
+  };
+}
+
+async function startSim() {
+  const teamA = $('sim-team-a').value.trim();
+  const teamB = $('sim-team-b').value.trim();
+  if (!teamA || !teamB) { $('sim-status').textContent = 'Enter both team names.'; return; }
+
+  // Update scoreboard team names
+  $('sb-team-a').textContent = teamA.toUpperCase();
+  $('sb-team-b').textContent = teamB.toUpperCase();
+
+  // Clear feed
+  const feed = $('play-feed');
+  feed.innerHTML = '<div class="sim-status">Loading real stats + starting simulation...</div>';
+  moveBall(250, 150, false);
+  simScoreFieldForA = 'score_a'; // reset on each new game
+  simLastScoreA = null;
+  simLastScoreB = null;
+
+  setSimLoading(true);
+  try {
+    const body = {
+      team_a: teamA, team_b: teamB, scenario: simScenario,
+      session_id: $('sim-session-id').value.trim() || 'sim_001',
+      scout_session_id: $('sim-scout-session').value.trim() || null,
+      coach_context: getSimCoachContext(),
+    };
+    const r = await fetch(`${$('base-url').value}/api/simulator/start`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showSimError(`Error ${r.status}: ${e.detail||r.statusText}`); return; }
+    const data = await r.json();
+    renderSimResponse(data, teamA, teamB);
+    enableCoachControls();
+  } catch(e) {
+    showSimError(`Network error: ${e.message}`);
+  } finally {
+    setSimLoading(false);
+  }
+}
+
+async function simAction(action) {
+  const sessionId = $('sim-session-id').value.trim() || 'sim_001';
+  setSimLoading(true);
+  appendCoachRow(`COACH: ${action}`);
+  try {
+    const r = await fetch(`${$('base-url').value}/api/simulator/action`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, session_id: sessionId }),
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showSimError(`Error ${r.status}: ${e.detail||r.statusText}`); return; }
+    const data = await r.json();
+    renderSimResponse(data, $('sb-team-a').textContent, $('sb-team-b').textContent);
+    enableCoachControls();
+  } catch(e) { showSimError(`Network error: ${e.message}`); }
+  finally { setSimLoading(false); }
+}
+
+async function simContinue() {
+  const sessionId = $('sim-session-id').value.trim() || 'sim_001';
+  setSimLoading(true);
+  try {
+    const r = await fetch(`${$('base-url').value}/api/simulator/continue`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    if (!r.ok) { const e = await r.json().catch(()=>({})); showSimError(`Error ${r.status}: ${e.detail||r.statusText}`); return; }
+    const data = await r.json();
+    renderSimResponse(data, $('sb-team-a').textContent, $('sb-team-b').textContent);
+    enableCoachControls();
+  } catch(e) { showSimError(`Network error: ${e.message}`); }
+  finally { setSimLoading(false); }
+}
+
+// ── Render plays + scoreboard + court ────────────────────────
+const PLAY_ICONS = {
+  made_shot: '🏀', missed_shot: '❌', turnover: '🔄',
+  foul: '🚨', free_throw_made: '✓', free_throw_missed: '✗', timeout: '📋', default: '▪'
+};
+const LOCATIONS = {
+  LEFT_CORNER:{x:50,y:270}, LEFT_WING:{x:100,y:80}, TOP_KEY:{x:250,y:50},
+  RIGHT_WING:{x:400,y:80}, RIGHT_CORNER:{x:450,y:270}, LEFT_BLOCK:{x:170,y:200},
+  RIGHT_BLOCK:{x:330,y:200}, PAINT:{x:250,y:180}, MID_RANGE_LEFT:{x:150,y:140},
+  MID_RANGE_RIGHT:{x:350,y:140}, FREE_THROW:{x:250,y:130}, FAST_BREAK:{x:250,y:150},
+  FULL_COURT:{x:250,y:150}, FREE_THROW_LINE:{x:250,y:130},
+};
+
+function renderSimResponse(data, teamA, teamB) {
+  const feed = $('play-feed');
+  // Remove empty state if present
+  const empty = document.getElementById('sim-empty');
+  if (empty) empty.remove();
+
+  // Remove old "loading" status rows
+  feed.querySelectorAll('.sim-status').forEach(el => el.remove());
+
+  const plays = data.plays || [];
+  plays.forEach(play => {
+    const row = document.createElement('div');
+    const isA = play.team.toUpperCase() === teamA.toUpperCase();
+    row.className = 'play-row';
+    const icon = PLAY_ICONS[play.play_type] || PLAY_ICONS.default;
+    row.innerHTML = `
+      <span class="play-time">Q${play.quarter} ${play.time}</span>
+      <span class="play-badge ${isA ? 'badge-a' : 'badge-b'}">${escHtml(play.team)}</span>
+      <span class="play-type-icon">${icon}</span>
+      <span class="play-action">${escHtml(play.action)}</span>
+      <span class="play-score">${play.score_a}–${play.score_b}</span>
+    `;
+    feed.appendChild(row);
+  });
+  feed.scrollTop = feed.scrollHeight;
+
+  // Move ball to last play's location
+  if (plays.length) {
+    const last = plays[plays.length - 1];
+    const loc = LOCATIONS[last.location] || LOCATIONS.PAINT;
+    moveBall(loc.x, loc.y, true);
+  }
+
+  // Detect score field mapping if not yet known
+  if (plays.length > 1) {
+    const detected = detectScoreMapping(plays, teamA);
+    if (detected) simScoreFieldForA = detected;
+  }
+
+  // Update scoreboard using correct field mapping
+  const gs = data.game_state;
+  if (gs) {
+    const fieldA = simScoreFieldForA;
+    const fieldB = fieldA === 'score_a' ? 'score_b' : 'score_a';
+    $('sb-score-a').textContent = gs[fieldA];
+    $('sb-score-b').textContent = gs[fieldB];
+    $('sb-quarter').textContent = `Quarter ${gs.quarter}`;
+    $('sb-time').textContent = gs.time_remaining;
+  }
+}
+
+function appendCoachRow(text) {
+  const feed = $('play-feed');
+  const row = document.createElement('div');
+  row.className = 'play-row coach-row';
+  row.innerHTML = `<span class="play-type-icon">📋</span><span class="play-action">${escHtml(text)}</span>`;
+  feed.appendChild(row);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function moveBall(x, y, visible) {
+  const ball = $('sim-ball');
+  ball.setAttribute('cx', x);
+  ball.setAttribute('cy', y);
+  ball.setAttribute('opacity', visible ? '0.95' : '0.1');
+  ball.setAttribute('r', visible ? '10' : '10');
+}
+
+function showSimError(msg) {
+  const feed = $('play-feed');
+  const d = document.createElement('div');
+  d.className = 'play-row';
+  d.style.borderColor = '#ef4444';
+  d.innerHTML = `<span class="play-action" style="color:#fca5a5">${escHtml(msg)}</span>`;
+  feed.appendChild(d);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// ── Shared utils ──────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>
