@@ -10,7 +10,7 @@ A production-grade FastAPI backend powering CourtVision AI's Scout Agent: a natu
 
 ---
 
-## Table of Contents
+## Table of Contents 
 
 - [Overview](#overview)
 - [Tool Stack](#tool-stack)
